@@ -31,60 +31,65 @@ TAIL_ORDER = ['tail.4','tail.3','tail.2','tail.1','tail.tip']
 
 def bone_angle(bone, frame):
     """Return quaternion (w,x,y,z) for bone at frame, and loc (x,y,z)."""
-    th = 2*math.pi*(frame-1.0)/24.0
+    # v2: fixed running-backwards (lower-leg lag sign flipped) and
+    # dash/dive look (smaller bends, level body, stance at frame 1).
+    # PO shifts time origin by a quarter cycle so frame 1 opens on a
+    # spread stance instead of a gathered crouch.
+    PO = math.pi/2
+    th = 2*math.pi*(frame-1.0)/24.0 + PO
     th2 = 2*th  # twice per cycle for bob
     # defaults
     q = (1.0, 0.0, 0.0, 0.0)
     loc = (0.0, 0.0, 0.0)
     if bone == 'frontleg.upper.L':
-        q = qx(0.55*math.sin(th))
+        q = qx(0.45*math.sin(th))
     elif bone == 'frontleg.upper.R':
-        q = qx(0.55*math.sin(th+math.pi))
+        q = qx(0.45*math.sin(th+math.pi))
     elif bone == 'frontleg.lower.L':
-        q = qx(0.40 + 0.38*math.sin(th-0.9))
+        q = qx(0.32 + 0.22*math.sin(th+0.9))
     elif bone == 'frontleg.lower.R':
-        q = qx(0.40 + 0.38*math.sin(th+math.pi-0.9))
+        q = qx(0.32 + 0.22*math.sin(th+math.pi+0.9))
     elif bone == 'hindleg.upper.R':
-        q = qx(0.60*math.sin(th))
+        q = qx(0.50*math.sin(th))
     elif bone == 'hindleg.upper.L':
-        q = qx(0.60*math.sin(th+math.pi))
+        q = qx(0.50*math.sin(th+math.pi))
     elif bone == 'hindleg.lower.R':
-        q = qx(0.45 + 0.42*math.sin(th-1.0))
+        q = qx(0.34 + 0.24*math.sin(th+1.0))
     elif bone == 'hindleg.lower.L':
-        q = qx(0.45 + 0.42*math.sin(th+math.pi-1.0))
+        q = qx(0.34 + 0.24*math.sin(th+math.pi+1.0))
     elif bone == 'hip.R':
-        q = qx(0.18*math.sin(th))
-    elif bone == 'hip.L':
-        q = qx(0.18*math.sin(th+math.pi))
-    elif bone == 'Bone':  # shoulder L
         q = qx(0.15*math.sin(th))
-    elif bone == 'Bone.006':  # shoulder R
+    elif bone == 'hip.L':
         q = qx(0.15*math.sin(th+math.pi))
+    elif bone == 'Bone':  # shoulder L
+        q = qx(0.12*math.sin(th))
+    elif bone == 'Bone.006':  # shoulder R
+        q = qx(0.12*math.sin(th+math.pi))
     elif bone == 'spine.001':
-        # root bob + slight pitch (cos so peaks land on 1,7,13,19 keys)
-        zbob = 0.028*math.cos(th2)
+        # root bob + slight pitch (cos so peaks land on keys)
+        zbob = 0.018*math.cos(th2)
         loc = (0.0, 0.0, zbob)
-        q = qx(0.07*math.cos(th2+0.5))
+        q = qx(0.04*math.cos(th2+0.5))
     elif bone == 'spine':
-        q = qx(0.06*math.cos(th2))
+        q = qx(0.035*math.cos(th2))
     elif bone == 'torso':
-        q = qx(0.06*math.cos(th2+math.pi))
+        q = qx(0.035*math.cos(th2+math.pi))
     elif bone == 'neck':
-        q = qx(-0.05*math.cos(th2))
+        q = qx(-0.03*math.cos(th2))
     elif bone == 'head':
-        q = qx(-0.08*math.cos(th2+0.3))
+        q = qx(-0.05*math.cos(th2+0.3))
     elif bone in TAIL_ORDER:
         i = TAIL_ORDER.index(bone)
         az = 0.24*math.sin(th + i*0.55)
         ax = 0.09*math.cos(th2 + i*0.3)
         q = qmul(qx(ax), qz(az))
     elif bone == 'ear.R':
-        q = qx(-0.10 + 0.28*math.cos(th2+1.2))
+        q = qx(0.05 + 0.18*math.cos(th2+1.2))
     elif bone == 'ear.L':
-        q = qx(-0.10 + 0.28*math.cos(th2+1.2+0.25))
+        q = qx(0.05 + 0.18*math.cos(th2+1.2+0.25))
     elif bone == 'MoustacheBone':
         # whisker twitch, fast + sway with head
-        az = 0.12*math.sin(3*th) + 0.05*math.sin(th2)
+        az = 0.06*math.sin(3*th) + 0.03*math.cos(th2)
         q = qz(az)
     else:
         q = (1.0,0.0,0.0,0.0)
