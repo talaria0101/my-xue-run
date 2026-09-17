@@ -7,9 +7,58 @@ import struct, math, os
 SRC = '/workspace/attachments/my_xue.blend'
 DST = '/workspace/my_xue_run.blend'
 
-FRAMES = [1.0, 7.0, 13.0, 19.0, 25.0]  # last duplicates first for perfect loop
+import json as _json
+# v3: motion retargeted from reference glTF mouse (sketchfab charliecatling
+# Mouse rig|run cycle, 0.458s bound/gallop). Resampled uniform keys.
+with open('/workspace/refmouse/resampled.json') as _f:
+    _R = _json.load(_f)
+FRAMES = _R['frames']  # 24 fractional frames 1.0..11.54
 FRAME_START = 1.0
-FRAME_END = 24.0
+FRAME_END = 12.0
+_N = len(FRAMES)
+_D2R = math.pi/180.0
+def _dm(key):
+    v = _R['pitch'][key]
+    m = sum(v)/len(v)
+    return [x-m for x in v]
+# per-bone pitch curves in radians: base + gain * demeaned-ref
+_P = {}
+_P['hindleg.upper.L'] = [0.12 + _D2R*0.30*x for x in _dm('DEF-thigh.L_0124')]
+_P['hindleg.upper.R'] = [0.12 + _D2R*0.30*x for x in _dm('DEF-thigh.R_0149')]
+_P['hindleg.lower.L'] = [0.55 + _D2R*0.45*x for x in _dm('DEF-shin.L_0126')]
+_P['hindleg.lower.R'] = [0.55 + _D2R*0.40*x for x in _dm('DEF-shin.R_0151')]
+_P['frontleg.upper.L'] = [-0.05 + _D2R*0.70*x for x in _dm('DEF-front_thigh.L_0207')]
+_P['frontleg.upper.R'] = [-0.05 + _D2R*0.70*x for x in _dm('DEF-front_thigh.R_0249')]
+_P['frontleg.lower.L'] = [0.50 + _D2R*0.40*x for x in _dm('DEF-front_shin.L_0209')]
+_P['frontleg.lower.R'] = [0.50 + _D2R*0.35*x for x in _dm('DEF-front_shin.R_0251')]
+_P['hip.L'] = [0.30*x for x in _P['hindleg.upper.L']]
+_P['hip.R'] = [0.30*x for x in _P['hindleg.upper.R']]
+_P['Bone'] = [0.30*x for x in _P['frontleg.upper.L']]
+_P['Bone.006'] = [0.30*x for x in _P['frontleg.upper.R']]
+_P['torso'] = [_D2R*0.50*x for x in _dm('torso_030')]
+_P['spine'] = [_D2R*0.40*x for x in _dm('torso_030')]
+_P['spine.001'] = [_D2R*0.50*x for x in _dm('hips_031')]
+_P['head'] = [_D2R*0.40*x for x in _dm('head_0164')]
+_P['neck'] = [0.5*x for x in _P['head']]
+_P['tail.4'] = [_D2R*0.50*x for x in _dm('DEF-spine.003_059')]
+_P['tail.3'] = [_D2R*0.50*x for x in _dm('DEF-spine.002_058')]
+_P['tail.2'] = [_D2R*0.50*x for x in _dm('DEF-spine.001_057')]
+_P['tail.1'] = list(_P['tail.2'])
+_P['tail.tip'] = list(_P['tail.2'])
+_P['ear.R'] = [0.05 + _D2R*0.50*x for x in _dm('ear.R_014')]
+_P['ear.L'] = [0.05 + _D2R*0.50*x for x in _dm('ear.L_017')]
+# root surge (fwd Y) from ref torso Z, bob (up Z) from ref hips Y, scaled
+_TZ = _R['trans']['torso_030']
+_HY = _R['trans']['hips_031']
+_TX = _R['trans']['torso_030']
+_mz = sum(p[2] for p in _TZ)/len(_TZ)
+_my = sum(p[1] for p in _HY)/len(_HY)
+_mx = sum(p[0] for p in _TX)/len(_TX)
+_S = 0.24  # size ratio ours/ref (length 1.17/4.9)
+_ROOT_Y = [(p[2]-_mz)*_S for p in _TZ]
+_ROOT_Z = [(p[1]-_my)*_S for p in _HY]
+_ROOT_X = [(p[0]-_mx)*_S for p in _TX]
+_FIDX = {fr:i for i,fr in enumerate(FRAMES)}
 
 def qx(a):
     return (math.cos(a/2), math.sin(a/2), 0.0, 0.0)
@@ -31,68 +80,25 @@ TAIL_ORDER = ['tail.4','tail.3','tail.2','tail.1','tail.tip']
 
 def bone_angle(bone, frame):
     """Return quaternion (w,x,y,z) for bone at frame, and loc (x,y,z)."""
-    # v2: fixed running-backwards (lower-leg lag sign flipped) and
-    # dash/dive look (smaller bends, level body, stance at frame 1).
-    # PO shifts time origin by a quarter cycle so frame 1 opens on a
-    # spread stance instead of a gathered crouch.
-    PO = math.pi/2
-    th = 2*math.pi*(frame-1.0)/24.0 + PO
-    th2 = 2*th  # twice per cycle for bob
-    # defaults
-    q = (1.0, 0.0, 0.0, 0.0)
-    loc = (0.0, 0.0, 0.0)
-    if bone == 'frontleg.upper.L':
-        q = qx(0.45*math.sin(th))
-    elif bone == 'frontleg.upper.R':
-        q = qx(0.45*math.sin(th+math.pi))
-    elif bone == 'frontleg.lower.L':
-        q = qx(0.32 + 0.22*math.sin(th+0.9))
-    elif bone == 'frontleg.lower.R':
-        q = qx(0.32 + 0.22*math.sin(th+math.pi+0.9))
-    elif bone == 'hindleg.upper.R':
-        q = qx(0.50*math.sin(th))
-    elif bone == 'hindleg.upper.L':
-        q = qx(0.50*math.sin(th+math.pi))
-    elif bone == 'hindleg.lower.R':
-        q = qx(0.34 + 0.24*math.sin(th+1.0))
-    elif bone == 'hindleg.lower.L':
-        q = qx(0.34 + 0.24*math.sin(th+math.pi+1.0))
-    elif bone == 'hip.R':
-        q = qx(0.15*math.sin(th))
-    elif bone == 'hip.L':
-        q = qx(0.15*math.sin(th+math.pi))
-    elif bone == 'Bone':  # shoulder L
-        q = qx(0.12*math.sin(th))
-    elif bone == 'Bone.006':  # shoulder R
-        q = qx(0.12*math.sin(th+math.pi))
-    elif bone == 'spine.001':
-        # root bob + slight pitch (cos so peaks land on keys)
-        zbob = 0.018*math.cos(th2)
-        loc = (0.0, 0.0, zbob)
-        q = qx(0.04*math.cos(th2+0.5))
-    elif bone == 'spine':
-        q = qx(0.035*math.cos(th2))
-    elif bone == 'torso':
-        q = qx(0.035*math.cos(th2+math.pi))
-    elif bone == 'neck':
-        q = qx(-0.03*math.cos(th2))
-    elif bone == 'head':
-        q = qx(-0.05*math.cos(th2+0.3))
-    elif bone in TAIL_ORDER:
-        i = TAIL_ORDER.index(bone)
-        az = 0.24*math.sin(th + i*0.55)
-        ax = 0.09*math.cos(th2 + i*0.3)
-        q = qmul(qx(ax), qz(az))
-    elif bone == 'ear.R':
-        q = qx(0.05 + 0.18*math.cos(th2+1.2))
-    elif bone == 'ear.L':
-        q = qx(0.05 + 0.18*math.cos(th2+1.2+0.25))
+    # v3: reference-driven (see tables above). frame must be in FRAMES.
+    ki = _FIDX.get(frame)
+    if ki is None:
+        # nearest (should not happen)
+        ki = min(range(_N), key=lambda i: abs(FRAMES[i]-frame))
+    th = 0.0
+    th2 = 0.0
+    if bone == 'spine.001':
+        loc = (_ROOT_X[ki], _ROOT_Y[ki], _ROOT_Z[ki])
+        q = qx(_P['spine.001'][ki])
+    elif bone in _P:
+        q = qx(_P[bone][ki])
+        loc = (0.0, 0.0, 0.0)
     elif bone == 'MoustacheBone':
-        # whisker twitch, fast + sway with head
-        az = 0.06*math.sin(3*th) + 0.03*math.cos(th2)
-        q = qz(az)
+        q = qz(0.20*_P['head'][ki] + 0.02*math.sin(ki*2.3))
+        loc = (0.0, 0.0, 0.0)
     else:
         q = (1.0,0.0,0.0,0.0)
+        loc = (0.0, 0.0, 0.0)
     return q, loc
 
 # --- read file ---
